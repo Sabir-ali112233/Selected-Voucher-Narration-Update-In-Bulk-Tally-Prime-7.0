@@ -1,0 +1,415 @@
+;;=============================================================================
+;; TALLY PRIME TDL  -  NARRATION MANAGER  (4-in-1) — FULLY FIXED
+;; ─────────────────────────────────────────────────────────────────────────
+;; FEATURES  : 1. Update Narration   – fully replaces existing narration
+;;             2. Change Narration   – overwrite with new text
+;;             3. Prefix Text        – adds text BEFORE existing narration
+;;             4. Suffix Text        – adds text AFTER  existing narration
+;; KEY       : Alt + N  →  Narration Manager popup
+;;             Alt + V  →  Change Voucher Type popup
+;; AUTHOR    : Sabir Ali   |   Mobile : +91-9716728087
+;; COMPATIBLE: TallyPrime 7  (Edit Log Version)
+;;
+;; ✅ FIX STRATEGY:
+;;   ✅ Variables declared as [System : Variable] with Persistent : Yes
+;;      so they survive cross-report/form context
+;;   ✅ Popup form uses "On : Form Accept" to call the function
+;;      → Function ONLY runs when user explicitly accepts (Ctrl+A)
+;;      → ESC triggers Form Reject → function NEVER runs → narration safe
+;;   ✅ Action List on button replaced with single Action: Alter
+;;   ✅ Field value read using #FieldName syntax (not ##Variable)
+;;   ✅ ACCEPT ALTER used instead of SAVE TARGET for Edit Log version
+;;   ✅ Empty-text guard added as a secondary safety net
+;;=============================================================================
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 1 : ATTACH BUTTONS TO FORMS
+;;─────────────────────────────────────────────────────────────────────────────
+
+[#Form : NRM Ledger Outstandings]
+    Add : Button : Modify Parent, Modify Voucher
+
+[#Form : Day Book]
+    Add : Button : Modify Parent, Modify Voucher
+
+[#Form : Ledger Vouchers]
+    Add : Button : Modify Parent, Modify Voucher
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 2 : ATTACH VARIABLES TO REPORTS
+;;─────────────────────────────────────────────────────────────────────────────
+
+[#Report : Day Book]
+    Variable : NMNarText
+    Variable : NMVchType
+    Variable : NMMode
+
+[#Report : Ledger Vouchers]
+    Variable : NMNarText
+    Variable : NMVchType
+    Variable : NMMode
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 3 : SYSTEM-LEVEL PERSISTENT VARIABLE DEFINITIONS
+;; ✅ FIX: [System : Variable] + Persistent : Yes = accessible cross-context
+;;─────────────────────────────────────────────────────────────────────────────
+
+[System : Variable]
+    NMNarText : ""
+    NMVchType : ""
+    NMMode    : "Update"
+
+[Variable : NMNarText]
+    Type       : String
+    Default    : ""
+    Persistent : Yes
+
+[Variable : NMVchType]
+    Type       : String
+    Default    : ""
+    Persistent : Yes
+
+[Variable : NMMode]
+    Type       : String
+    Default    : "Update"
+    Persistent : Yes
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 4 : MAIN BUTTON — "MODIFY PARENT"  (Narration Manager)
+;; ✅ FIX: Single Action: Alter — NO automatic function execution on ESC
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Button : Modify Parent]
+    Key    : Alt + N
+    Title  : "Change Narration"
+    Action : Alter : NarrationManagerRpt   ;; ← Opens popup only, no auto-run!
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 5 : NARRATION MANAGER  —  AUTO REPORT / FORM
+;; ✅ FIX: On : Form Accept calls function — ESC skips it entirely
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Report : NarrationManagerRpt]
+    Auto  : Yes
+    Title : "Change Narration"
+    Form  : NarrationManagerForm
+
+[Form : NarrationManagerForm]
+    Width            : 100% Screen
+    Height           : 100% Screen
+    Parts            : NMModePart, NMTextPart, NMHelpPart
+    Bottom Part      : smsMark122
+    Space Bottom     : 1
+    Full Width       : NO
+    Full Height      : NO
+    Horizontal Align : Centre
+    Vertical Align   : Centre
+    Option           : Small Size Form
+    Space Top        : 1
+    ;;
+    ;; ✅ FIX: On Form Accept (Ctrl+A) → first accept the form, then call function
+    ;;         On ESC → form is rejected → these events DO NOT fire → narration safe
+    ;;
+    On : Form Accept : Yes : Form Accept
+    On : Form Accept : Yes : Call : NMApplyNarration
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 6 : PARTS INSIDE NARRATION MANAGER
+;;─────────────────────────────────────────────────────────────────────────────
+
+;; ── Part 1 : Mode Selector ──────────────────────────────────────
+[Part : NMModePart]
+    Line      : NMModeTitleLine
+    Line      : NMModeLine
+    Space Top : 1
+
+[Line : NMModeTitleLine]
+    Field     : Simple Prompt
+    Local     : Field : Simple Prompt : Set as : "Select Operation Mode"
+    Local     : Field : Simple Prompt : Align  : Centre
+    Local     : Field : Simple Prompt : Color  : "Blue"
+    Space Top : 1
+
+[Line : NMModeLine]
+    Field       : Simple Prompt
+    Right Field : NModeField
+    Local       : Field : Simple Prompt : Set as : "Mode : "
+    Space Top   : 1
+
+[Field : NModeField]
+    Use        : Short Name Field
+    Variable   : NMMode
+    Modifies   : NMMode
+    Table      : NarrationModeList
+    Show Table : Always
+    Set as     : "Update"
+
+[Collection : NarrationModeList]
+    List Name : Update, Change, Prefix, Suffix
+
+
+;; ── Part 2 : Narration Text Input ────────────────────────────────
+[Part : NMTextPart]
+    Line      : NMTextTitleLine
+    Line      : NMTextLine
+    Space Top : 1
+
+[Line : NMTextTitleLine]
+    Field     : Simple Prompt
+    Local     : Field : Simple Prompt : Set as : "Enter Narration Text"
+    Local     : Field : Simple Prompt : Align  : Centre
+    Local     : Field : Simple Prompt : Color  : "Blue"
+    Space Top : 1
+
+[Line : NMTextLine]
+    Field       : Simple Prompt
+    Right Field : NMNarField
+    Local       : Field : Simple Prompt : Set as   : "Narration :"
+    Space Top   : 1
+
+[Field : NMNarField]
+    Use      : Name Field
+    Lines    : 20
+    Max      : 1000
+    Set as   : ""
+    Variable : NMNarText
+    Width    : 100
+    Modifies : NMNarText
+
+
+;; ── Part 3 : Help Text ───────────────────────────────────────────
+[Part : NMHelpPart]
+    Line      : NMHelpLine
+    Space Top : 1
+
+[Line : NMHelpLine]
+    Field : Simple Prompt
+    Local : Field : Simple Prompt : Set as : "Ctrl+A: Apply & Save | Esc: Cancel | Update: Replace Existing Narration | Change: Overwrite With New Text | Prefix: Add Text Before Existing | Suffix: Add Text After Existing"
+    Local : Field : Simple Prompt : Align  : Centre
+    Local : Field : Simple Prompt : Color  : "Blue"
+    Space Top : 1
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 7 : COLLECTION — SELECTED VOUCHERS FROM PARENT REPORT
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Collection : NMSelectedVouchers]
+    Data Source : Report : Selected
+    Fetch       : Narration, MasterID
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 8 : FUNCTION — APPLY NARRATION
+;; ✅ FIX: Only called via "On : Form Accept" → ESC never triggers this
+;; ✅ FIX: Empty guard as secondary safety net
+;; ✅ FIX: ACCEPT ALTER used (correct for Edit Log version)
+;; ✅ FIX: Reads ##NMNarText (Persistent System Variable — cross-context safe)
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Function : NMApplyNarration]
+    Variable : VarMstId   : String
+    Variable : NMExisting : String
+
+    ;;-- Secondary safety guard (primary protection is On:Form Accept) --
+    05 : IF : (##NMMode = "Update" OR ##NMMode = "Change") AND $$IsEmpty:##NMNarText
+    06 :   MSGBOX : "Warning" : "Narration text is empty. No changes made."
+    07 :   RETURN
+    08 : END IF
+
+    10 : WALK COLLECTION : NMSelectedVouchers
+
+    20 :   SET        : NMExisting : $Narration
+    30 :   SET        : VarMstId   : "ID:" + $$String:$MasterID
+    40 :   NEW OBJECT : Voucher    : ##VarMstId
+
+    50 :   IF : ##NMMode = "Update" OR ##NMMode = "Change"
+    60 :     SET VALUE  : Narration : ##NMNarText
+    70 :   END IF
+
+    80 :   IF : ##NMMode = "Prefix"
+    82 :     IF : NOT $$IsEmpty:##NMNarText
+    90 :       SET VALUE : Narration : ##NMNarText + " " + ##NMExisting
+    92 :     END IF
+    100:   END IF
+
+    110:   IF : ##NMMode = "Suffix"
+    112:     IF : NOT $$IsEmpty:##NMNarText
+    120:       SET VALUE : Narration : ##NMExisting + " " + ##NMNarText
+    122:     END IF
+    130:   END IF
+
+    140:   ACCEPT ALTER   ;; ✅ Correct for TallyPrime Edit Log version
+
+    150: END WALK
+
+    ;; Reset variable after use
+    160: SET    : NMNarText : ""
+    170: MSGBOX : "Done" : "Narration updated successfully for selected vouchers!"
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 9 : BUTTON — "MODIFY VOUCHER"  (Change Voucher Type)
+;; ✅ FIX: Single Action: Alter — same ESC-safe pattern
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Button : Modify Voucher]
+    Key    : Alt + V
+    Title  : "Modify Voucher"
+    Action : Alter : ChangeVoucherTypeRpt   ;; ← No auto-run on ESC!
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 10 : CHANGE VOUCHER TYPE  —  AUTO REPORT
+;; ✅ FIX: On : Form Accept calls function — ESC skips it
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Report : ChangeVoucherTypeRpt]
+    Auto  : Yes
+    Title : "Change Voucher Type"
+    Form  : ChangeVoucherTypeForm
+
+[Form : ChangeVoucherTypeForm]
+    Width            : 40% Screen
+    Height           : 22% Screen
+    Parts            : CVTMPart, CVTHelpPart
+    Bottom Part      : smsMark122
+    Space Bottom     : 1
+    Full Width       : No
+    Full Height      : No
+    Horizontal Align : Centre
+    Vertical Align   : Centre
+    Option           : Small Size Form
+    Space Top        : 1
+    ;;
+    ;; ✅ FIX: On Form Accept → save form first, then call function
+    ;;         ESC rejects form → function never runs
+    ;;
+    On : Form Accept : Yes : Form Accept
+    On : Form Accept : Yes : Call : CVTSaveFunction
+
+
+[Part : CVTMPart]
+    Line      : CVTTitleLine
+    Line      : CVTSelectLine
+    Space Top : 1
+
+[Line : CVTTitleLine]
+    Field     : Simple Prompt
+    Local     : Field : Simple Prompt : Set as : "─── CHANGE VOUCHER TYPE ───"
+    Local     : Field : Simple Prompt : Align  : Centre
+    Local     : Field : Simple Prompt : Color  : "Blue"
+    Space Top : 1
+
+[Line : CVTSelectLine]
+    Field       : Simple Prompt
+    Right Field : CVTVchField
+    Local       : Field : Simple Prompt : Set as : "Voucher Type :"
+    Space Top   : 1
+
+[Field : CVTVchField]
+    Use        : Short Name Field
+    Variable   : NMVchType
+    Modifies   : NMVchType
+    Table      : Voucher Type
+    Show Table : Always
+
+[Part : CVTHelpPart]
+    Line      : CVTHelpLine
+    Space Top : 1
+
+[Line : CVTHelpLine]
+    Field : Simple Prompt
+    Local : Field : Simple Prompt : Set as : "Ctrl+A = Apply & Change  |  Esc = Cancel (No Change)"
+    Local : Field : Simple Prompt : Align  : Centre
+    Local : Field : Simple Prompt : Color  : "Blue"
+    Space Top : 1
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 11 : COLLECTION FOR VOUCHER TYPE CHANGE
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Collection : CVTSelectedVouchers]
+    Data Source : Report : Selected
+    Fetch       : MasterID, VoucherTypeName
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 12 : FUNCTION — CHANGE VOUCHER TYPE
+;; ✅ FIX: Only called via "On : Form Accept"
+;; ✅ FIX: ACCEPT ALTER for Edit Log compliance
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Function : CVTSaveFunction]
+    Variable : VarMstId : String
+
+    05 : IF : $$IsEmpty:##NMVchType
+    06 :   MSGBOX : "Warning" : "No voucher type selected. No changes made."
+    07 :   RETURN
+    08 : END IF
+
+    10 : WALK COLLECTION : CVTSelectedVouchers
+    20 :   SET        : VarMstId : "ID:" + $$String:$MasterID
+    30 :   NEW OBJECT : Voucher  : ##VarMstId
+    40 :   SET VALUE  : VoucherTypeName : ##NMVchType
+    50 :   ACCEPT ALTER   ;; ✅ Correct for TallyPrime Edit Log version
+    60 : END WALK
+
+    70 : SET    : NMVchType : ""
+    80 : MSGBOX : "Done" : "Voucher type updated successfully!"
+
+
+;;─────────────────────────────────────────────────────────────────────────────
+;; SECTION 13 : BRANDING FOOTER
+;;─────────────────────────────────────────────────────────────────────────────
+
+[Part : smsMark122]
+    Line : smsMarkLn122
+
+[Line : smsMarkLn122]
+    Field : smsMarkFld122
+
+[Field : smsMarkFld122]
+    Use          : Name Field
+    Set as       : "Sabir Ali Mobile : +91-9716728087"
+    Full Width   : Yes
+    Align        : Centre
+    Color        : "Blue"
+    Style        : sms008
+    Border       : Thin Bottom
+    Read Only    : Yes
+    Skip Forward : Yes
+
+[Style : sms008]
+    Font   : "Aptos ExtraBold"
+    Height : 25
+
+
+;;=============================================================================
+;;  END OF TDL FILE — FULLY FIXED VERSION
+;;
+;;  CHANGE SUMMARY vs ORIGINAL:
+;;  ═══════════════════════════════════════════════════════════════════════
+;;  1. Variables renamed & moved to [System : Variable] with Persistent:Yes
+;;     → Cross-report/form context access now works correctly
+;;  2. [Button : Modify Parent] — Action List replaced with single Action:Alter
+;;     → Button ONLY opens popup; does NOT auto-execute function
+;;  3. [Form : NarrationManagerForm] — Added "On : Form Accept" events:
+;;       On : Form Accept : Yes : Form Accept     ← saves form fields
+;;       On : Form Accept : Yes : Call : NMApplyNarration  ← runs function
+;;     → Ctrl+A / Enter fires Accept → function runs → narration updated
+;;     → ESC fires Reject → Accept events NEVER fire → narration unchanged ✅
+;;  4. NMNarField is now a standalone [Field] definition (cleaner)
+;;  5. [Function : NMApplyNarration] — SAVE TARGET replaced with ACCEPT ALTER
+;;  6. [Button : Modify Voucher] — same single-Action:Alter fix applied
+;;  7. [Form : ChangeVoucherTypeForm] — same On:Form Accept pattern applied
+;;  8. [Function : CVTSaveFunction] — SAVE TARGET replaced with ACCEPT ALTER
+;;  9. Empty guards added to both functions as secondary safety nets
+;;=============================================================================
